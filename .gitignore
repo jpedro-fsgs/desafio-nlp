@@ -1,4 +1,6 @@
 .venv
 *.pyc
-downloads/*
+downloads/
+downloads_extra/
 *.db
+*.zip
