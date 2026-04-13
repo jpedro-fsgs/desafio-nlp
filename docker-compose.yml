@@ -1,0 +1,26 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  app:
+    build: .
+    container_name: llama-index-app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - qdrant
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+    volumes:
+      - .:/app
+
+volumes:
+  qdrant_data:
