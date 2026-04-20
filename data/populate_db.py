@@ -5,7 +5,7 @@ import glob
 from data.model_dados import Model, RegistroDiario, Registros, Pdf
 
 DB_NAME = "aneel_legislacao.db"
-DATA_DIR = "dados_grupo_estudos_new"
+DATA_DIR = "dados_grupo_estudos"
 
 def create_tables(cursor):
     cursor.execute("""
