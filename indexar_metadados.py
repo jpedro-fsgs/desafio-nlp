@@ -4,27 +4,22 @@ import asyncio
 from llama_index.core import Document, StorageContext, VectorStoreIndex, Settings
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
-from qdrant_client import QdrantClient
+import config
+from qdrant_service import get_qdrant_client
 import dotenv
 
 # Carregar variáveis de ambiente (necessário para OPENAI_API_KEY)
 dotenv.load_dotenv()
 
-# --- CONFIGURAÇÃO ---
-DB_PATH = "data/aneel_legislacao.db"
-QDRANT_HOST = "localhost" # Altere para o host do container se necessário
-QDRANT_PORT = 6333
-COLLECTION_NAME = "aneel_metadata"
-
-# Configurar Embeddings (IMPORTANTE: não mude o modelo após indexar!)
+# Configurar Embeddings
 Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
 
 def load_metadata_from_sqlite():
     """Lê os metadados do SQLite e os transforma em objetos Document."""
-    if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"Banco de dados {DB_PATH} não encontrado.")
+    if not os.path.exists(config.DB_PATH):
+        raise FileNotFoundError(f"Banco de dados {config.DB_PATH} não encontrado.")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(config.DB_PATH)
     cursor = conn.cursor()
     
     # Busca os registros normalizados
@@ -70,23 +65,22 @@ async def run_indexing():
     # 1. Carregar documentos
     documents = load_metadata_from_sqlite()
 
-    # 2. Inicializar cliente Qdrant
-    print(f"Conectando ao Qdrant em {QDRANT_HOST}:{QDRANT_PORT}...")
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    # 2. Inicializar cliente Qdrant (Condicional: Local ou Cloud)
+    client = get_qdrant_client()
 
     # 3. Configurar Vector Store e Storage Context
-    vector_store = QdrantVectorStore(client=client, collection_name=COLLECTION_NAME)
+    vector_store = QdrantVectorStore(client=client, collection_name=config.COLLECTION_NAME)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
     # 4. Criar o Índice (Isso gera os embeddings via OpenAI)
-    print("Iniciando geração de embeddings e indexação (isso pode levar alguns minutos)...")
-    index = VectorStoreIndex.from_documents(
+    print(f"Iniciando geração de embeddings e indexação na coleção '{config.COLLECTION_NAME}'...")
+    VectorStoreIndex.from_documents(
         documents,
         storage_context=storage_context,
         show_progress=True
     )
 
-    print(f"\n[OK] Indexação concluída! Coleção '{COLLECTION_NAME}' criada no Qdrant.")
+    print(f"\n[OK] Indexação concluída!")
 
 if __name__ == "__main__":
     asyncio.run(run_indexing())

@@ -1,22 +1,26 @@
 import os
-import qdrant_client
 from llama_index.core import VectorStoreIndex, Settings
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 import dotenv
+import config
+from qdrant_service import get_qdrant_client
 
 dotenv.load_dotenv()
 
-# Configuração igual à da indexação
+# Configuração
 Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-client = qdrant_client.QdrantClient(host="localhost", port=6333)
-vector_store = QdrantVectorStore(client=client, collection_name="aneel_metadata")
-
-# Carregar o índice (sem precisar re-indexar nada)
-index = VectorStoreIndex.from_vector_store(vector_store)
 
 def testar_busca(query):
     print(f"\n--- Pergunta: {query} ---")
+    
+    # Inicializa cliente (Local ou Cloud)
+    client = get_qdrant_client()
+    vector_store = QdrantVectorStore(client=client, collection_name=config.COLLECTION_NAME)
+    
+    # Carregar o índice
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    
     retriever = index.as_retriever(similarity_top_k=3)
     nodes = retriever.retrieve(query)
     
