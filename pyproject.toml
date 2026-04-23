@@ -8,6 +8,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "fastapi>=0.135.3",
     "fastembed>=0.8.0",
+    "google-cloud-storage>=3.10.1",
     "llama-index>=0.14.20",
     "llama-index-embeddings-fastembed>=0.6.0",
     "llama-index-embeddings-openai>=0.6.0",
@@ -16,5 +17,6 @@ dependencies = [
     "llama-index-vector-stores-qdrant>=0.10.0",
     "pydantic>=2.13.0",
     "qdrant-client>=1.17.1",
+    "tqdm>=4.67.3",
     "uvicorn>=0.44.0",
 ]

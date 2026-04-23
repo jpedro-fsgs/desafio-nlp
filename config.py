@@ -23,8 +23,13 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_URL = os.getenv("QDRANT_URL")
 
+# Configurações do GCS (GCP Bucket)
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
 # --- VALIDAÇÃO DE CONFIGURAÇÃO ---
 
+# 1. Validação Qdrant Cloud (Inconsistência de chaves)
 if QDRANT_URL or QDRANT_API_KEY:
     if not (QDRANT_URL and QDRANT_API_KEY):
         missing = "QDRANT_API_KEY" if not QDRANT_API_KEY else "QDRANT_URL"
@@ -32,17 +37,28 @@ if QDRANT_URL or QDRANT_API_KEY:
         logger.error(error_msg)
         raise ValueError(error_msg)
 
+# 2. Validação OpenAI
 if not os.getenv("OPENAI_API_KEY"):
     error_msg = "OPENAI_API_KEY não encontrada. O sistema requer esta chave para funcionar."
     logger.error(error_msg)
     raise ValueError(error_msg)
 
-# Modo de recuperação: 'local' ou 'url' (Usando Enum)
-RETRIEVAL_MODE = RetrievalMode.URL 
+# Modo de recuperação PADRÃO alterado para GCS (Bucket Privado)
+RETRIEVAL_MODE = RetrievalMode.GCS 
+
+# 3. Validação GCS se estiver no modo GCS
+if RETRIEVAL_MODE == RetrievalMode.GCS:
+    if not GCS_BUCKET_NAME or not GOOGLE_APPLICATION_CREDENTIALS:
+        error_msg = "Modo GCS ativo, mas GCS_BUCKET_NAME ou GOOGLE_APPLICATION_CREDENTIALS não configurados no .env"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
 # Configurações de Retrieval (Limites Fixos)
 SIMILARITY_TOP_K = 2
 MAX_RETRIEVAL = 10  # Valor fixo, não alterável via API
+
+# Segurança
+API_KEY = os.getenv("API_KEY")
 
 def setup_llama_index():
     """Configura os modelos globais do LlamaIndex."""

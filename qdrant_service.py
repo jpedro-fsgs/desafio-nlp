@@ -1,7 +1,8 @@
+import os
+import qdrant_client
 import time
 import random
 from typing import List
-import qdrant_client
 from llama_index.core import VectorStoreIndex, QueryBundle
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import NodeWithScore, TextNode
@@ -12,7 +13,7 @@ from llama_index.core.response_synthesizers import get_response_synthesizer, Res
 import config
 from models import RetrievalMode
 from config import QDRANT_HOST, QDRANT_PORT, QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, logger
-from utils import get_best_pdf_info, extract_text_from_pdf, extract_text_from_url
+from utils import get_best_pdf_info, extract_text_from_pdf, extract_text_from_url, extract_text_from_gcs
 
 def get_qdrant_client():
     """Retorna um cliente Qdrant baseado nas configurações de ambiente."""
@@ -32,7 +33,7 @@ def get_qdrant_client():
 class AneelRetriever(BaseRetriever):
     """Retriever customizado que implementa a estratégia Small-to-Big.
     Busca a ementa no Qdrant e retorna o texto integral do PDF como contexto.
-    Respeita o modo de recuperação (local ou url) e o Top-K definido em config.
+    Respeita o modo de recuperação (local, url ou gcs) e o Top-K definido em config.
     """
     def __init__(self, vector_retriever: BaseRetriever):
         self._vector_retriever = vector_retriever
@@ -67,10 +68,22 @@ class AneelRetriever(BaseRetriever):
             origem = "Fallback (Ementa)"
 
             # 3. Recuperação baseada no Modo Ativo (Comparação com Enum)
-            if config.RETRIEVAL_MODE == RetrievalMode.URL and pdf_url:
+            if config.RETRIEVAL_MODE == RetrievalMode.GCS:
+                arquivo_nome = None
+                if pdf_path:
+                    arquivo_nome = os.path.basename(pdf_path)
+                elif pdf_url:
+                    arquivo_nome = pdf_url.split("/")[-1]
+                
+                if arquivo_nome:
+                    logger.info(f"Modo GCS ativo. Recuperando do Bucket: {arquivo_nome}")
+                    full_text = extract_text_from_gcs(arquivo_nome)
+                    origem = "GCP Bucket"
+
+            elif config.RETRIEVAL_MODE == RetrievalMode.URL and pdf_url:
                 if i > 0:
-                    time.sleep(1.0)
-                    
+                    delay = random.uniform(2.0, 5.0)
+                    time.sleep(delay)
                 logger.info(f"Modo URL ativo. Recuperando: {pdf_url}")
                 full_text = extract_text_from_url(pdf_url)
                 origem = "URL Direta"
@@ -81,7 +94,6 @@ class AneelRetriever(BaseRetriever):
                 origem = "PDF Local"
 
             if full_text:
-                # Cria um novo nó com o texto completo para o sintetizador
                 new_node = TextNode(
                     text=full_text,
                     metadata=node_with_score.node.metadata
@@ -89,7 +101,6 @@ class AneelRetriever(BaseRetriever):
                 new_node.metadata["fonte_tipo"] = origem
                 final_nodes.append(NodeWithScore(node=new_node, score=node_with_score.score))
             else:
-                # Fallback para a própria ementa se a extração falhar
                 node_with_score.node.metadata["fonte_tipo"] = "Ementa (Fallback)"
                 final_nodes.append(node_with_score)
                 
