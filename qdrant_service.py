@@ -1,7 +1,4 @@
-import os
 import qdrant_client
-import time
-import random
 from typing import List
 from llama_index.core import VectorStoreIndex, QueryBundle
 from llama_index.core.retrievers import BaseRetriever
@@ -11,9 +8,8 @@ from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.response_synthesizers import get_response_synthesizer, ResponseMode
 
 import config
-from models import RetrievalMode
 from config import QDRANT_HOST, QDRANT_PORT, QDRANT_URL, QDRANT_API_KEY, COLLECTION_NAME, logger
-from utils import get_best_pdf_info, extract_text_from_pdf, extract_text_from_url, extract_text_from_gcs
+from pipeline.orchestrator import DocumentPipeline
 
 def get_qdrant_client():
     """Retorna um cliente Qdrant baseado nas configurações de ambiente."""
@@ -32,15 +28,15 @@ def get_qdrant_client():
 
 class AneelRetriever(BaseRetriever):
     """Retriever customizado que implementa a estratégia Small-to-Big.
-    Busca a ementa no Qdrant e retorna o texto integral do PDF como contexto.
-    Respeita o modo de recuperação (local, url ou gcs) e o Top-K definido em config.
+    Busca a ementa no Qdrant e usa o DocumentPipeline para recuperar o texto integral.
     """
     def __init__(self, vector_retriever: BaseRetriever):
         self._vector_retriever = vector_retriever
+        self._pipeline = DocumentPipeline()
         super().__init__()
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
-        # Atualiza dinamicamente o Top-K do retriever base usando setattr para evitar erros de lint
+        # Atualiza dinamicamente o Top-K do retriever base usando setattr
         if hasattr(self._vector_retriever, "similarity_top_k"):
             setattr(self._vector_retriever, "similarity_top_k", config.SIMILARITY_TOP_K)
         elif hasattr(self._vector_retriever, "_similarity_top_k"):
@@ -50,48 +46,15 @@ class AneelRetriever(BaseRetriever):
         nodes_with_score = self._vector_retriever.retrieve(query_bundle)
         
         final_nodes: List[NodeWithScore] = []
-        for i, node_with_score in enumerate(nodes_with_score):
-            # Validação do registro_id
-            reg_id_raw = node_with_score.node.metadata.get("registro_id")
+        for node_with_score in nodes_with_score:
+            reg_id = node_with_score.node.metadata.get("registro_id")
             
-            if reg_id_raw is None or not isinstance(reg_id_raw, int):
-                logger.warning(f"registro_id inválido ou ausente no nó: {reg_id_raw}")
+            if reg_id is None or not isinstance(reg_id, int):
                 final_nodes.append(node_with_score)
                 continue
-                
-            reg_id: int = reg_id_raw
             
-            # 2. Busca informações do PDF (Path e URL)
-            pdf_path, pdf_url = get_best_pdf_info(reg_id)
-            
-            full_text = ""
-            origem = "Fallback (Ementa)"
-
-            # 3. Recuperação baseada no Modo Ativo (Comparação com Enum)
-            if config.RETRIEVAL_MODE == RetrievalMode.GCS:
-                arquivo_nome = None
-                if pdf_path:
-                    arquivo_nome = os.path.basename(pdf_path)
-                elif pdf_url:
-                    arquivo_nome = pdf_url.split("/")[-1]
-                
-                if arquivo_nome:
-                    logger.info(f"Modo GCS ativo. Recuperando do Bucket: {arquivo_nome}")
-                    full_text = extract_text_from_gcs(arquivo_nome)
-                    origem = "GCP Bucket"
-
-            elif config.RETRIEVAL_MODE == RetrievalMode.URL and pdf_url:
-                if i > 0:
-                    delay = random.uniform(2.0, 5.0)
-                    time.sleep(delay)
-                logger.info(f"Modo URL ativo. Recuperando: {pdf_url}")
-                full_text = extract_text_from_url(pdf_url)
-                origem = "URL Direta"
-            
-            elif config.RETRIEVAL_MODE == RetrievalMode.LOCAL and pdf_path:
-                logger.info(f"Modo LOCAL ativo. Lendo: {pdf_path}")
-                full_text = extract_text_from_pdf(pdf_path)
-                origem = "PDF Local"
+            # 2. Orquestração Modular: Metadados -> Fetch -> Parse
+            full_text, origem = self._pipeline.process_document(reg_id, config.RETRIEVAL_MODE)
 
             if full_text:
                 new_node = TextNode(
@@ -101,7 +64,7 @@ class AneelRetriever(BaseRetriever):
                 new_node.metadata["fonte_tipo"] = origem
                 final_nodes.append(NodeWithScore(node=new_node, score=node_with_score.score))
             else:
-                node_with_score.node.metadata["fonte_tipo"] = "Ementa (Fallback)"
+                node_with_score.node.metadata["fonte_tipo"] = f"{origem} (Fallback Ementa)"
                 final_nodes.append(node_with_score)
                 
         return final_nodes
@@ -113,13 +76,9 @@ def get_aneel_query_engine():
         vector_store = QdrantVectorStore(client=client, collection_name=COLLECTION_NAME)
         index = VectorStoreIndex.from_vector_store(vector_store)
         
-        # Cria o retriever base do Qdrant (Top-K inicializado do config)
         base_retriever = index.as_retriever(similarity_top_k=config.SIMILARITY_TOP_K)
-        
-        # Envolve no nosso retriever customizado
         custom_retriever = AneelRetriever(base_retriever)
         
-        # Cria o Query Engine
         response_synthesizer = get_response_synthesizer(response_mode=ResponseMode.COMPACT)
         
         query_engine = RetrieverQueryEngine(

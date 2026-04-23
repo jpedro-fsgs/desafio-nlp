@@ -27,6 +27,8 @@ QDRANT_URL = os.getenv("QDRANT_URL")
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
+logger.info("GCP credentials path: " + str(GOOGLE_APPLICATION_CREDENTIALS))
+
 # --- VALIDAÇÃO DE CONFIGURAÇÃO ---
 
 # 1. Validação Qdrant Cloud (Inconsistência de chaves)
