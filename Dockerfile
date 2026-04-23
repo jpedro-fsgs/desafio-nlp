@@ -29,5 +29,5 @@ WORKDIR /app
 # Copy application code
 COPY . .
 
-# Set the entrypoint
-CMD ["python", "main.py"]
+# Set the entrypoint to use uvicorn directly
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

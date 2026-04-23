@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ignora toda a pasta data por padrão (isso evita o upload de 1.6GB)
+data/*
+# Abre uma exceção APENAS para o banco de dados
+!data/aneel_legislacao.db
+
+# Outros diretórios de dados e caches
+qdrant_data/
+*.sqlite3
+
+# Configurações e Segredos
+.env
+# Ignora chaves JSON (Service Accounts)
+*.json
+!pyproject.toml
+!uv.lock
+
+# Logs
+*.log
+rag_usage.log
+
+# Git
+.git
+.gitignore
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
