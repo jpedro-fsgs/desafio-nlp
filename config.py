@@ -50,10 +50,13 @@ RETRIEVAL_MODE = RetrievalMode.GCS
 
 # 3. Validação GCS se estiver no modo GCS
 if RETRIEVAL_MODE == RetrievalMode.GCS:
-    if not GCS_BUCKET_NAME or not GOOGLE_APPLICATION_CREDENTIALS:
-        error_msg = "Modo GCS ativo, mas GCS_BUCKET_NAME ou GOOGLE_APPLICATION_CREDENTIALS não configurados no .env"
+    if not GCS_BUCKET_NAME:
+        error_msg = "Modo GCS ativo, mas GCS_BUCKET_NAME não configurados no .env"
         logger.error(error_msg)
         raise ValueError(error_msg)
+
+    if  not GOOGLE_APPLICATION_CREDENTIALS:
+        logger.info("GOOGLE_APPLICATION_CREDENTIALS não definido explicitamente.")
 
 # Configurações de Retrieval (Limites Fixos)
 SIMILARITY_TOP_K = 2
