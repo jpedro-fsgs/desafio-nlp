@@ -1,16 +1,20 @@
+version: '3.8'
+
 services:
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: qdrant
+    container_name: qdrant-vector-db
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - ./qdrant_data:/qdrant/storage
 
-  app:
-    build: .
-    container_name: llama-index-app
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: aneel-rag-backend
     ports:
       - "8000:8000"
     depends_on:
@@ -19,8 +23,24 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/key.json
     volumes:
-      - .:/app
+      # Monta o banco e a chave GCP (Caminhos relativos ao host)
+      - ./backend/data/aneel_legislacao.db:/app/backend/data/aneel_legislacao.db:ro
+      - /home/myoui/Downloads/aneel-rag-674d17f69df0.json:/app/key.json:ro
+    env_file:
+      - .env
 
-volumes:
-  qdrant_data:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: aneel-rag-frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://backend:8000
+    env_file:
+      - .env

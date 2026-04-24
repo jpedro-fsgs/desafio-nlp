@@ -5,3 +5,7 @@ downloads_extra/
 *.zip
 .env
 *.log
+.vscode/
+.idea/
+__pycache__/
+prompts_teste.txt
