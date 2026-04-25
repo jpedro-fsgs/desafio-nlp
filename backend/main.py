@@ -3,7 +3,7 @@ from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import StreamingResponse
 import config
 from config import setup_llama_index, logger
-from models import QueryRequest, QueryResponse, ConfigSettingsRequest, ConfigResponse, ChatRequest
+from models import QueryRequest, QueryResponse, ConfigSettingsRequest, ConfigResponse, ChatRequest, TitleRequest, TitleResponse
 from qdrant_service import get_aneel_query_engine
 from agent_service import astream_agent_chat
 from starlette.status import HTTP_403_FORBIDDEN
@@ -56,6 +56,18 @@ async def chat_streaming(request: ChatRequest):
         astream_agent_chat(request.session_id, request.message),
         media_type="text/event-stream"
     )
+
+@app.post("/chat/title", response_model=TitleResponse, dependencies=[Depends(get_api_key)])
+async def generate_chat_title(request: TitleRequest):
+    """Gera um título curto para a sessão de chat baseado na primeira mensagem."""
+    from llama_index.core import Settings
+    try:
+        prompt = f"Gere um título muito curto (máximo 4 palavras) para uma conversa que começa com esta pergunta: '{request.message}'. Responda APENAS o título."
+        response = await Settings.llm.acomplete(prompt)
+        return TitleResponse(title=str(response).strip('"\'. '))
+    except Exception as e:
+        logger.error(f"Erro ao gerar título: {e}")
+        return TitleResponse(title="Nova Conversa")
 
 @app.post("/settings/config", response_model=ConfigResponse, dependencies=[Depends(get_api_key)])
 async def update_settings(request: ConfigSettingsRequest):

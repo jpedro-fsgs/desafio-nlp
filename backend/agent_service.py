@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Dict, AsyncGenerator
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
-from llama_index.core.agent.workflow import FunctionAgent, ToolCall, AgentStream
+from llama_index.core.agent.workflow import FunctionAgent, ToolCall, AgentStream, ToolCallResult
 from llama_index.core.workflow import Context
 from qdrant_service import get_aneel_query_engine
 from config import Settings, logger
@@ -52,8 +52,7 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
     ctx = _get_context(session_id, agent)
 
     # 4. Executa o Workflow com streaming de eventos
-    # No v0.14, .run() retorna um handler para stream_events()
-    handler = agent.run(user_msg=message, ctx=ctx)
+    handler = agent.run(ctx=ctx, user_msg=message)
 
     try:
         async for ev in handler.stream_events():
@@ -62,11 +61,18 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
                 msg = f"Agente decidiu pesquisar: {ev.tool_name}"
                 yield f"data: {json.dumps({'type': 'status', 'content': msg})}\n\n"
             
+            # Evento de Resultado da Ferramenta (Extração de fontes em tempo real)
+            elif isinstance(ev, ToolCallResult):
+                raw = getattr(ev.tool_output, 'raw_output', None)
+                if raw is not None and hasattr(raw, 'source_nodes'):
+                    sources = [node.node.metadata for node in raw.source_nodes]
+                    yield f"data: {json.dumps({'type': 'sources', 'content': sources})}\n\n"
+            
             # Evento de Token de Resposta
             elif isinstance(ev, AgentStream):
                 yield f"data: {json.dumps({'type': 'token', 'content': ev.delta})}\n\n"
         
-        # Aguarda o resultado final (opcional se já pegamos os tokens)
+        # Aguarda a conclusão total do workflow
         await handler
         yield f"data: {json.dumps({'type': 'done', 'content': ''})}\n\n"
 
