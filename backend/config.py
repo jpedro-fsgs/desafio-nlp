@@ -59,7 +59,7 @@ if RETRIEVAL_MODE == RetrievalMode.GCS:
         logger.info("GOOGLE_APPLICATION_CREDENTIALS não definido explicitamente.")
 
 # Configurações de Retrieval (Limites Fixos)
-SIMILARITY_TOP_K = 2
+SIMILARITY_TOP_K = 5
 MAX_RETRIEVAL = 10  # Valor fixo, não alterável via API
 
 # Segurança

@@ -3,6 +3,7 @@ from typing import Dict, AsyncGenerator
 from llama_index.core.agent.workflow import FunctionAgent, ToolCall, AgentStream, ToolCallResult
 from llama_index.core.workflow import Context
 from agent.tools import get_agent_tools
+from models import ToolResponseModel, SourceModel
 from config import Settings, logger
 
 # --- GERENCIAMENTO DE CONTEXTO (SESSÕES V0.14) ---
@@ -62,36 +63,45 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
                 msg = f"Agente decidiu pesquisar: {ev.tool_name}"
                 yield f"data: {json.dumps({'type': 'status', 'content': msg})}\n\n"
             
-            # Evento de Resultado da Ferramenta (Extração de fontes em tempo real)
+            # Evento de Resultado da Ferramenta (Extração de fontes em tempo real via Contrato Pydantic)
             elif isinstance(ev, ToolCallResult):
-                sources = []
+                sources_payload = []
                 output = ev.tool_output
                 raw = getattr(output, 'raw_output', None)
                 
-                # Caso 1: Resultado de QueryEngine (Source Nodes estão no raw_output)
-                if raw is not None and hasattr(raw, 'source_nodes'):
-                    for node_with_score in raw.source_nodes:
-                        meta = node_with_score.node.metadata.copy()
-                        sources.append(meta)
+                # Caso 1: Novo Contrato (ToolResponseModel)
+                if isinstance(raw, ToolResponseModel):
+                    for src in raw.sources:
+                        sources_payload.append(src.model_dump())
                 
-                # Caso 2: Resultado de FunctionTool (pode ser string ou dict)
+                # Caso 2: Fallback para QueryEngine direto (se houver tool legada)
+                elif raw is not None and hasattr(raw, 'source_nodes'):
+                    for node_with_score in raw.source_nodes:
+                        m = node_with_score.node.metadata
+                        sources_payload.append({
+                            "id": str(m.get('registro_id') or m.get('pdf_nome') or "src"),
+                            "title": m.get('pdf_nome') or m.get('titulo') or "Documento",
+                            "link": m.get('pdf_url_acesso'),
+                            "tool_name": ev.tool_name
+                        })
+                
+                # Caso 3: Fallback para strings simples (Garante que nada seja perdido)
                 else:
                     out_str = str(output)
-                    source_info = {
-                        "tool": ev.tool_name,
-                        "pdf_nome": getattr(output, 'pdf_nome', "Documento"),
-                    }
-                    
-                    # Tenta extrair link se estiver no texto do output da ferramenta
-                    if "LINK DE ACESSO:" in out_str:
+                    if "LINK" in out_str.upper():
                         import re
-                        link_match = re.search(r"LINK DE ACESSO: (https://\S+)", out_str)
+                        link_match = re.search(r"(https?://\S+)", out_str)
                         if link_match:
-                            source_info["pdf_url_acesso"] = link_match.group(1)
-                    
-                    sources.append(source_info)
+                            sources_payload.append({
+                                "id": "extracted_link",
+                                "title": "Documento Citado",
+                                "link": link_match.group(1),
+                                "tool_name": ev.tool_name
+                            })
                 
-                yield f"data: {json.dumps({'type': 'sources', 'content': sources})}\n\n"
+                if sources_payload:
+                    yield f"data: {json.dumps({'type': 'sources', 'content': sources_payload})}\n\n"
+                
                 yield f"data: {json.dumps({'type': 'status', 'content': 'Analisando resultados da pesquisa...'})}\n\n"
             
             # Evento de Token de Resposta

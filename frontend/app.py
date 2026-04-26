@@ -106,10 +106,50 @@ async def generate_title(chat_id: str, first_msg: str):
                 st.session_state.chats[chat_id]["title"] = resp.json()["title"]
     except Exception: pass
 
-async def handle_chat_stream(user_input: str, chat_id: str, chat_column):
-    """Lida com o stream de forma limpa e profissional."""
+def render_sources_ui(container, sources):
+    """Renderiza os blocos de fontes padronizados (usado para atualizações em tempo real)."""
+    with container.container():
+        if not sources:
+            st.caption("Fontes serão listadas aqui conforme a pesquisa.")
+        else:
+            st.markdown('<div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">', unsafe_allow_html=True)
+            seen_ids = set()
+            
+            for src in sources[:20]: # Mostra até 20 fontes
+                source_id = src.get('id')
+                title = src.get('title', 'Documento')
+                link = src.get('link')
+                summary = src.get('text')
+                
+                # Deduplicação visual robusta baseada no ID do contrato
+                if source_id in seen_ids: continue
+                seen_ids.add(source_id)
+
+                if link:
+                    # Se for link, mostra apenas o botão de acesso (sem resumo/expander)
+                    st.link_button(
+                        title, 
+                        link, 
+                        icon=":material/description:", 
+                        use_container_width=True,
+                        help=f"Abrir documento original"
+                    )
+                else:
+                    # Se não for link, mostra um expander com a ementa completa
+                    with st.expander(title, icon=":material/info:"):
+                        if summary:
+                            st.markdown(f"**Ementa/Resumo:**\n\n{summary}")
+                        else:
+                            st.caption("Detalhes não disponíveis para este registro.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+async def handle_chat_stream(user_input: str, chat_id: str, chat_column, sources_placeholder):
+    """Lida com o stream e atualiza a UI de fontes em tempo real usando o novo contrato."""
     chat = st.session_state.chats[chat_id]
     chat["messages"].append({"role": "user", "content": user_input})
+    
+    # Limpa fontes para a nova consulta
+    chat["sources"] = [] 
     
     if len(chat["messages"]) == 1:
         asyncio.create_task(generate_title(chat_id, user_input))
@@ -120,9 +160,8 @@ async def handle_chat_stream(user_input: str, chat_id: str, chat_column):
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
             with chat_column:
-                # 1. Indicador dinâmico de pensamento (Placeholder)
                 status_placeholder = st.empty()
-                status_placeholder.markdown(":material/sync: *Processando consulta regulatória...*")
+                status_placeholder.markdown(":material/sync: *Processando consulta...*")
                 
                 full_response = ""
                 
@@ -136,24 +175,33 @@ async def handle_chat_stream(user_input: str, chat_id: str, chat_column):
                         
                         async for line in response.aiter_lines():
                             if not line.startswith("data: "): continue
-                            data = json.loads(line.replace("data: ", ""))
+                            data_raw = line.replace("data: ", "")
+                            if not data_raw: continue
+                            
+                            data = json.loads(data_raw)
                             
                             if data["type"] == "status":
-                                # Atualiza o texto do indicador dinâmico
                                 status_placeholder.markdown(f":material/search: *{data['content']}...*")
                             
                             elif data["type"] == "token":
-                                # Remove o indicador assim que a resposta começa
-                                status_placeholder.empty()
+                                if data["content"]: # Esconde status quando tokens reais chegam
+                                    status_placeholder.empty()
                                 full_response += data["content"]
                                 response_placeholder.markdown(full_response)
                             
                             elif data["type"] == "sources":
-                                chat["sources"] = data["content"]
+                                # ACUMULA E DEDUPLICA FONTES VIA CONTRATO FORTE (ID)
+                                new_sources = data["content"]
+                                for ns in new_sources:
+                                    if not any(s.get('id') == ns.get('id') for s in chat["sources"]):
+                                        chat["sources"].append(ns)
+                                
+                                # ATUALIZA UI EM TEMPO REAL NO PAINEL LATERAL
+                                render_sources_ui(sources_placeholder, chat["sources"])
 
                 chat["messages"].append({"role": "assistant", "content": full_response})
         except Exception as e:
-            st.error(f"Erro: {e}")
+            st.error(f"Erro no streaming: {e}")
 
 # --- INTERFACE PRINCIPAL ---
 with st.sidebar:
@@ -185,10 +233,7 @@ if cur_id:
     col_chat, col_info = st.columns([0.72, 0.28], gap="large")
     
     with col_chat:
-        # Título usando a classe CSS que evita cortes
         st.markdown(f'<div class="chat-title">{chat_data["title"]}</div>', unsafe_allow_html=True)
-        
-        # Área de mensagens
         for msg in chat_data["messages"]:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
@@ -196,25 +241,22 @@ if cur_id:
     with col_info:
         st.markdown('<div class="context-panel">', unsafe_allow_html=True)
         st.subheader(":material/menu_book: Fontes", anchor=False)
-        if not chat_data["sources"]:
-            st.caption("Fontes serão listadas aqui.")
-        else:
-            for src in chat_data["sources"][:5]:
-                with st.expander(src.get('file_name', 'Documento'), expanded=True):
-                    st.caption(src.get('ementa', 'Sem ementa'))
-                    if 'url' in src:
-                        st.link_button("Abrir PDF", src['url'], icon=":material/open_in_new:", use_container_width=True)
+        
+        # Placeholder para atualização dinâmica (fundamental para streaming interativo)
+        sources_placeholder = st.empty()
+        
+        # Renderiza estado persistido (importante para recarregar histórico)
+        render_sources_ui(sources_placeholder, chat_data["sources"])
+        
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # INPUT GLOBAL: Fixado na base da página por padrão do Streamlit
     if prompt := st.chat_input("Escreva sua pergunta aqui..."):
-        # Mostra a pergunta do usuário imediatamente
         with col_chat:
             with st.chat_message("user"):
                 st.markdown(prompt)
         
-        # Dispara o processamento e stream
-        asyncio.run(handle_chat_stream(prompt, cur_id, col_chat))
+        # Agora passamos o sources_placeholder para a função de stream
+        asyncio.run(handle_chat_stream(prompt, cur_id, col_chat, sources_placeholder))
         st.rerun()
 else:
     st.info("Inicie uma consulta.")

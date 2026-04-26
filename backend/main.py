@@ -3,7 +3,10 @@ from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import StreamingResponse
 import config
 from config import setup_llama_index, logger
-from models import QueryRequest, QueryResponse, ConfigSettingsRequest, ConfigResponse, ChatRequest, TitleRequest, TitleResponse
+from models import (
+    QueryRequest, QueryResponse, ConfigSettingsRequest, ConfigResponse, 
+    ChatRequest, TitleRequest, TitleResponse, SourceModel
+)
 from services.qdrant import get_registros_query_engine
 from agent.service import astream_agent_chat, generate_chat_title_service
 from starlette.status import HTTP_403_FORBIDDEN
@@ -38,7 +41,17 @@ async def ask_question(request: QueryRequest):
     
     try:
         response = await query_engine.aquery(request.query)
-        sources = [node.metadata for node in response.source_nodes]
+        sources = []
+        for node_with_score in response.source_nodes:
+            m = node_with_score.node.metadata
+            sources.append(SourceModel(
+                id=str(m.get('registro_id') or m.get('pdf_nome') or "src"),
+                title=m.get('pdf_nome') or m.get('titulo') or "Documento",
+                link=m.get('pdf_url_acesso'),
+                text=node_with_score.node.get_content(),
+                tool_name="retrieval_direto"
+            ))
+            
         return QueryResponse(
             query=request.query,
             answer=str(response),

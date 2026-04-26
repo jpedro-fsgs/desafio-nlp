@@ -7,13 +7,32 @@ class RetrievalMode(str, Enum):
     URL = "url"
     GCS = "gcs"
 
+# --- Contrato de Retrieval Padronizado ---
+
+class SourceModel(BaseModel):
+    id: str = Field(description="Identificador único para deduplicação (ex: registro_id ou nome do arquivo)")
+    title: str = Field(description="Título amigável para exibição no frontend")
+    link: Optional[str] = Field(default=None, description="Link de acesso direto ao documento")
+    tool_name: Optional[str] = Field(default=None, description="Ferramenta que gerou esta fonte")
+    text: Optional[str] = Field(default=None, description="Trecho, ementa ou resumo do conteúdo")
+
+class ToolResponseModel(BaseModel):
+    text: str = Field(description="O conteúdo em texto retornado pela busca")
+    sources: List[SourceModel] = Field(default_factory=list, description="Lista padronizada de fontes")
+
+    def __str__(self):
+        """Garante que o LLM receba o texto otimizado ao invés do dump JSON do modelo."""
+        return self.text
+
+# --- Requisições e Respostas ---
+
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=3, max_length=1500, description="A pergunta deve ter entre 3 e 1500 caracteres.")
 
 class QueryResponse(BaseModel):
     query: str
     answer: str
-    sources: List[dict]
+    sources: List[SourceModel]
 
 class ConfigSettingsRequest(BaseModel):
     mode: Optional[RetrievalMode] = None

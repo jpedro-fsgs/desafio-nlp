@@ -1,7 +1,9 @@
 import qdrant_client
 from qdrant_client import AsyncQdrantClient
+from typing import Optional
 from llama_index.core import VectorStoreIndex
 from llama_index.vector_stores.qdrant import QdrantVectorStore
+from llama_index.core.vector_stores.types import MetadataFilters, ExactMatchFilter
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.response_synthesizers import get_response_synthesizer, ResponseMode
 
@@ -35,8 +37,8 @@ def get_async_qdrant_client():
     else:
         return AsyncQdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
-def get_registros_query_engine():
-    """Retorna um QueryEngine para a coleção de registros (Macro)."""
+def get_registros_query_engine(filters: Optional[MetadataFilters] = None):
+    """Retorna um QueryEngine para a coleção de registros (Macro) com filtros opcionais."""
     try:
         client = get_qdrant_client()
         aclient = get_async_qdrant_client()
@@ -51,14 +53,15 @@ def get_registros_query_engine():
         
         return index.as_query_engine(
             similarity_top_k=config.SIMILARITY_TOP_K,
-            response_mode=ResponseMode.COMPACT
+            response_mode=ResponseMode.COMPACT,
+            filters=filters
         )
     except Exception as e:
         logger.error(f"Falha ao inicializar Registros QueryEngine: {e}")
         raise RuntimeError(f"Base de registros indisponível: {e}")
 
-def get_pdfs_query_engine():
-    """Retorna um QueryEngine para a coleção de PDFs com Parent Retrieval via GCS."""
+def get_pdfs_query_engine(filters: Optional[MetadataFilters] = None):
+    """Retorna um QueryEngine para a coleção de PDFs com Parent Retrieval via GCS e filtros."""
     try:
         client = get_qdrant_client()
         aclient = get_async_qdrant_client()
@@ -71,8 +74,11 @@ def get_pdfs_query_engine():
         )
         index = VectorStoreIndex.from_vector_store(vector_store)
         
-        # Retriever base (vetorial)
-        base_retriever = index.as_retriever(similarity_top_k=config.SIMILARITY_TOP_K)
+        # Retriever base (vetorial) com filtros
+        base_retriever = index.as_retriever(
+            similarity_top_k=config.SIMILARITY_TOP_K,
+            filters=filters
+        )
         
         # Retriever customizado (GCS Parent) - Agora importado de services.gcs
         custom_retriever = GCSFullDocumentRetriever(base_retriever)

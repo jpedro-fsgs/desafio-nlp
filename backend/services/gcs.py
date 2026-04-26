@@ -1,10 +1,34 @@
-from datetime import timedelta
+import os
+from datetime import datetime, timedelta
 from typing import List, Optional
 from google.cloud import storage
 from llama_index.core import QueryBundle
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import NodeWithScore, TextNode
 from config import GCS_BUCKET_NAME, logger, COLLECTION_PDFS
+
+DEBUG_FILE = "debug_retrieval.txt"
+
+def log_debug(source: str, query: str, nodes: List[NodeWithScore]):
+    """Escreve a saída completa do retrieval em um arquivo de debug."""
+    return
+    try:
+        with open(DEBUG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"DATA/HORA: {datetime.now().isoformat()}\n")
+            f.write(f"FONTE: {source}\n")
+            f.write(f"QUERY: {query}\n")
+            f.write(f"{'-'*80}\n")
+            for i, n in enumerate(nodes):
+                f.write(f"RESULTADO {i+1} [Score: {n.score:.4f} if hasattr(n, 'score') else 'N/A']\n")
+                f.write(f"METADADOS: {n.node.metadata}\n")
+                # Usa get_content() para evitar erro de atributo desconhecido em BaseNode
+                text_content = n.node.get_content() if hasattr(n.node, 'get_content') else str(n.node)
+                f.write(f"CONTEÚDO:\n{text_content[:2000]}...\n") 
+                f.write(f"{'.'*40}\n")
+            f.write(f"{'='*80}\n")
+    except Exception as e:
+        logger.error(f"Erro ao escrever log de debug: {e}")
 
 def fetch_markdown_from_gcs(pdf_nome: str) -> Optional[str]:
     """
@@ -46,7 +70,7 @@ def generate_pdf_signed_url(pdf_nome: str, expiration_minutes: int = 60) -> Opti
         blob_path = f"pdfs/{name_with_ext}"
         blob = bucket.blob(blob_path)
 
-        # Gera a URL com validade temporária (Requer permissão de Service Account Token Creator)
+        # Gera a URL com validade temporária
         url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(minutes=expiration_minutes),
@@ -70,7 +94,6 @@ class GCSFullDocumentRetriever(BaseRetriever):
         # 1. Busca os chunks mais relevantes (Small chunks)
         logger.info(f"Iniciando busca vetorial no Qdrant (Coleção: {COLLECTION_PDFS}). Query: '{query_bundle.query_str[:50]}...'")
         nodes_with_score = self._vector_retriever.retrieve(query_bundle)
-        logger.info(f"Qdrant retornou {len(nodes_with_score)} chunks relevantes.")
         
         final_nodes: List[NodeWithScore] = []
         processed_files = set() 
@@ -86,12 +109,8 @@ class GCSFullDocumentRetriever(BaseRetriever):
             full_text = fetch_markdown_from_gcs(pdf_nome)
 
             if full_text:
-                # Gera link para o PDF original
                 pdf_link = generate_pdf_signed_url(pdf_nome)
                 
-                logger.info(f"Sucesso: Documento recuperado. Link original gerado.")
-                
-                # Injetamos o link no topo do texto para que o LLM veja e possa citar
                 header = f"--- ARQUIVO ORIGINAL: {pdf_nome} ---\n"
                 if pdf_link:
                     header += f"--- LINK DE ACESSO: {pdf_link} ---\n\n"
@@ -107,8 +126,10 @@ class GCSFullDocumentRetriever(BaseRetriever):
                 final_nodes.append(NodeWithScore(node=new_node, score=node_with_score.score))
                 processed_files.add(pdf_nome)
             else:
-                logger.warning(f"Falha ao recuperar MD do GCS. Mantendo chunk original.")
                 node_with_score.node.metadata["retrieval_type"] = "Chunk_Only_Fallback"
                 final_nodes.append(node_with_score)
+        
+        # LOG DE DEBUG: Qdrant + GCS
+        log_debug(f"RETRIEVAL PDFs (QDRANT + GCS)", query_bundle.query_str, final_nodes)
                 
         return final_nodes
