@@ -4,7 +4,7 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 import dotenv
 import config
-from qdrant_service import get_qdrant_client
+from services.qdrant import get_qdrant_client
 
 dotenv.load_dotenv()
 
@@ -16,7 +16,7 @@ def testar_busca(query):
     
     # Inicializa cliente (Local ou Cloud)
     client = get_qdrant_client()
-    vector_store = QdrantVectorStore(client=client, collection_name=config.COLLECTION_NAME)
+    vector_store = QdrantVectorStore(client=client, collection_name=config.COLLECTION_REGISTROS)
     
     # Carregar o índice
     index = VectorStoreIndex.from_vector_store(vector_store)

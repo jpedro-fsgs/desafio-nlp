@@ -10,3 +10,4 @@ downloads_extra/
 __pycache__/
 prompts_teste.txt
 parsed_docs*/
+*.db*

@@ -38,7 +38,7 @@ from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from tqdm import tqdm
-from pipeline.parsers.pymupdf_parser import PyMuPDFParser
+from scripts.parsers.pymupdf_parser import PyMuPDFParser
 
 # ─────────────────────────────────────────────
 #  Logging

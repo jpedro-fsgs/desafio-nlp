@@ -13,9 +13,9 @@ dotenv.load_dotenv()
 logger = logging.getLogger("uvicorn.error")
 
 # Configurações de caminhos
-DB_PATH = "data/aneel_legislacao.db"
 DOWNLOADS_DIR = "data/downloads"
-COLLECTION_NAME = "aneel_metadata"
+COLLECTION_REGISTROS = "aneel_registros"
+COLLECTION_PDFS = "aneel_pdfs"
 
 # Configurações do Qdrant
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
