@@ -8,6 +8,6 @@ downloads_extra/
 .vscode/
 .idea/
 __pycache__/
-prompts_teste.txt
 parsed_docs*/
 *.db*
+*.txt

@@ -79,11 +79,27 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# --- GERENCIAMENTO DE IDENTIDADE (Persistência via URL) ---
+if "user" not in st.query_params:
+    st.query_params["user"] = str(uuid.uuid4())
+user_id = st.query_params["user"]
+
 # --- INICIALIZAÇÃO DO ESTADO ---
 if "chats" not in st.session_state:
     st.session_state.chats = {}
+    # Tenta recuperar histórico do backend (Single Source of Truth)
+    try:
+        headers = {"access_token": str(API_KEY)}
+        # Usamos uma chamada síncrona simples no início para bloquear até carregar o estado
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(f"{BACKEND_URL}/users/{user_id}/chats", headers=headers)
+            if resp.status_code == 200:
+                st.session_state.chats = resp.json()
+    except Exception:
+        pass
+
 if "current_chat_id" not in st.session_state:
-    st.session_state.current_chat_id = None
+    st.session_state.current_chat_id = next(iter(st.session_state.chats)) if st.session_state.chats else None
 
 def create_new_chat():
     new_id = str(uuid.uuid4())
@@ -101,7 +117,8 @@ async def generate_title(chat_id: str, first_msg: str):
     try:
         async with httpx.AsyncClient() as client:
             headers = {"access_token": str(API_KEY)}
-            resp = await client.post(f"{BACKEND_URL}/chat/title", json={"message": first_msg}, headers=headers)
+            payload = {"message": first_msg, "session_id": chat_id, "user_id": user_id}
+            resp = await client.post(f"{BACKEND_URL}/chat/title", json=payload, headers=headers)
             if resp.status_code == 200:
                 st.session_state.chats[chat_id]["title"] = resp.json()["title"]
     except Exception: pass
@@ -155,7 +172,7 @@ async def handle_chat_stream(user_input: str, chat_id: str, chat_column, sources
         asyncio.create_task(generate_title(chat_id, user_input))
 
     headers = {"access_token": str(API_KEY or ""), "Content-Type": "application/json"}
-    payload = {"session_id": chat_id, "message": user_input}
+    payload = {"session_id": chat_id, "message": user_input, "user_id": user_id}
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         try:
@@ -205,7 +222,11 @@ async def handle_chat_stream(user_input: str, chat_id: str, chat_column, sources
 
 # --- INTERFACE PRINCIPAL ---
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/1/1f/Aneel.png", width=160)
+    # Centralização do Logo com mais espaço para evitar redução de tamanho
+    log_col1, log_col2, log_col3 = st.columns([0.1, 1, 0.1])
+    with log_col2:
+        st.image("https://upload.wikimedia.org/wikipedia/commons/1/1f/Aneel.png", width=180)
+    
     st.title("Histórico")
     if st.button("Nova Consulta", icon=":material/add:", use_container_width=True):
         create_new_chat()
@@ -221,6 +242,14 @@ with st.sidebar:
                 st.rerun()
         with cols[1]:
             if st.button(":material/delete:", key=f"del_{chat_id}"):
+                # Sincroniza exclusão com o backend
+                try:
+                    headers = {"access_token": str(API_KEY)}
+                    with httpx.Client(timeout=5.0) as client:
+                        client.delete(f"{BACKEND_URL}/chats/{chat_id}", headers=headers)
+                except Exception:
+                    pass
+                
                 del st.session_state.chats[chat_id]
                 if st.session_state.current_chat_id == chat_id:
                     st.session_state.current_chat_id = next(iter(st.session_state.chats)) if st.session_state.chats else None

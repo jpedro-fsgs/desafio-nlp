@@ -50,11 +50,14 @@ class RetrievalModeRequest(BaseModel):
 # --- Novos Schemas para o Chat Stateful ---
 
 class ChatRequest(BaseModel):
+    user_id: str = Field(..., description="ID único do usuário.")
     session_id: str = Field(..., description="ID único da sessão do chat no frontend.")
     message: str = Field(..., min_length=1, max_length=2000, description="A mensagem do usuário.")
 
 class TitleRequest(BaseModel):
-    message: str
+    user_id: str = Field(..., description="ID único do usuário.")
+    session_id: str = Field(..., description="ID único da sessão do chat no frontend.")
+    message: str = Field(..., description="A primeira mensagem do usuário.")
 
 class TitleResponse(BaseModel):
     title: str

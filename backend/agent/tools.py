@@ -98,7 +98,7 @@ def get_agent_tools() -> list:
                     rid = str(m.get('registro_id', ''))
                     arq = m.get('pdf_nome', 'Desconhecido')
                     nat = m.get('natureza', 'Técnico')
-                    link = m.get('pdf_url_acesso')
+                    link = m.get('pdf_url_acesso') # Chave correta no Qdrant: url_origem
                     
                     # Adiciona ao contrato Pydantic
                     sources_list.append(SourceModel(
@@ -106,8 +106,9 @@ def get_agent_tools() -> list:
                         title=arq,
                         link=link,
                         tool_name="pesquisar_documentos_pdf_aneel",
-                        # Resolvendo erro de Pylance: usando get_content() em vez de .text
-                        text=n.node.get_content()
+                        # Para PDFs, mantemos apenas o link clicável no frontend, 
+                        # removendo o campo 'text' que geraria o collapsible indesejado.
+                        text=None 
                     ))
                     
                     meta_str += f"[{i+1}] Registro ID: {rid} | Arquivo: {arq} | Tipo: {nat}\n"
@@ -147,7 +148,10 @@ def get_agent_tools() -> list:
                     title=pdf_nome,
                     link=pdf_link,
                     tool_name="ler_documento_completo_direto",
-                    text=content[:2000] # Limite razoável para o texto
+                    # Nesta ferramenta específica de leitura, o texto é o objetivo, 
+                    # mas para manter a consistência visual de 'PDF = Link', 
+                    # podemos optar por não mostrar o collapsible gigante no painel lateral.
+                    text=None 
                 )
                 
                 return ToolResponseModel(text=text_result, sources=[source])

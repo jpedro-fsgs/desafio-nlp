@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta
 from typing import Dict, AsyncGenerator
 from llama_index.core.agent.workflow import FunctionAgent, ToolCall, AgentStream, ToolCallResult
 from llama_index.core.workflow import Context
@@ -6,22 +7,62 @@ from agent.tools import get_agent_tools
 from models import ToolResponseModel, SourceModel
 from config import Settings, logger
 
-# --- GERENCIAMENTO DE CONTEXTO (SESSÕES V0.14) ---
-# session_id -> Context
+# --- GERENCIAMENTO DE CONTEXTO E HISTÓRICO (SESSÕES V0.14) ---
+# session_id -> Context (Memória interna do LlamaIndex)
 _session_contexts: Dict[str, Context] = {}
+# session_id -> Histórico Visual (Para reconstrução da UI no Streamlit)
+_chat_histories: Dict[str, dict] = {}
+# session_id -> Última atividade
+_last_activity: Dict[str, datetime] = {}
+
+def _cleanup_inactive_sessions():
+    """Remove sessões que não tiveram atividade na última hora."""
+    now = datetime.now()
+    cutoff = now - timedelta(hours=1)
+
+    inactive_sessions = [
+        sid for sid, last_time in _last_activity.items() 
+        if last_time < cutoff
+    ]
+
+    for sid in inactive_sessions:
+        logger.info(f"[CLEANUP] Removendo sessão inativa: {sid}")
+        _session_contexts.pop(sid, None)
+        _chat_histories.pop(sid, None)
+        _last_activity.pop(sid, None)
+
+def _update_activity(session_id: str):
+    """Atualiza o timestamp de última atividade da sessão."""
+    _last_activity[session_id] = datetime.now()
 
 def _get_context(session_id: str, agent: FunctionAgent) -> Context:
     """Recupera ou cria um novo contexto de workflow para a sessão."""
+    _update_activity(session_id)
     if session_id not in _session_contexts:
-        # No v0.14, o Context mantém o estado da conversa e variáveis do workflow
         _session_contexts[session_id] = Context(agent)
     return _session_contexts[session_id]
 
+def _init_history(session_id: str, user_id: str):
+    """Garante que a estrutura de histórico visual exista para a sessão."""
+    _update_activity(session_id)
+    if session_id not in _chat_histories:
+        _chat_histories[session_id] = {
+            "user_id": user_id,
+            "title": "Nova Consulta",
+            "messages": [],
+            "sources": []
+        }
+
 # --- SERVIÇO DO AGENTE ---
-async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[str, None]:
-    """Orquestra o chat streaming usando o novo paradigma de Workflow do LlamaIndex v0.14."""
+async def astream_agent_chat(session_id: str, message: str, user_id: str) -> AsyncGenerator[str, None]:
+    """Orquestra o chat streaming e persiste o histórico visual em memória."""
     
-    logger.info(f"[CHAT] Iniciando workflow para sessão {session_id}. Mensagem: '{message[:50]}...'")
+    _cleanup_inactive_sessions()
+    logger.info(f"[CHAT] Sessão {session_id} | Usuário {user_id} | Msg: '{message[:50]}...'")
+    
+    # Inicializa ou recupera histórico visual
+    _init_history(session_id, user_id)
+    _chat_histories[session_id]["messages"].append({"role": "user", "content": message})
 
     # 1. Recupera as Ferramentas do Agente
     tools = get_agent_tools()
@@ -53,6 +94,8 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
     # 4. Executa o Workflow com streaming de eventos e limite de segurança aumentado
     handler = agent.run(ctx=ctx, user_msg=message, max_steps=40)
 
+    full_assistant_response = ""
+
     try:
         # Feedback inicial imediato
         yield f"data: {json.dumps({'type': 'status', 'content': 'Agente iniciando raciocínio...'})}\n\n"
@@ -63,7 +106,7 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
                 msg = f"Agente decidiu pesquisar: {ev.tool_name}"
                 yield f"data: {json.dumps({'type': 'status', 'content': msg})}\n\n"
             
-            # Evento de Resultado da Ferramenta (Extração de fontes em tempo real via Contrato Pydantic)
+            # Evento de Resultado da Ferramenta (Extração de fontes em tempo real)
             elif isinstance(ev, ToolCallResult):
                 sources_payload = []
                 output = ev.tool_output
@@ -81,25 +124,16 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
                         sources_payload.append({
                             "id": str(m.get('registro_id') or m.get('pdf_nome') or "src"),
                             "title": m.get('pdf_nome') or m.get('titulo') or "Documento",
-                            "link": m.get('pdf_url_acesso'),
+                            "link": m.get('url_origem'),
                             "tool_name": ev.tool_name
                         })
                 
-                # Caso 3: Fallback para strings simples (Garante que nada seja perdido)
-                else:
-                    out_str = str(output)
-                    if "LINK" in out_str.upper():
-                        import re
-                        link_match = re.search(r"(https?://\S+)", out_str)
-                        if link_match:
-                            sources_payload.append({
-                                "id": "extracted_link",
-                                "title": "Documento Citado",
-                                "link": link_match.group(1),
-                                "tool_name": ev.tool_name
-                            })
-                
                 if sources_payload:
+                    # Persiste fontes no histórico visual (Deduplicando pelo ID)
+                    for sp in sources_payload:
+                        if not any(s['id'] == sp['id'] for s in _chat_histories[session_id]["sources"]):
+                            _chat_histories[session_id]["sources"].append(sp)
+                    
                     yield f"data: {json.dumps({'type': 'sources', 'content': sources_payload})}\n\n"
                 
                 yield f"data: {json.dumps({'type': 'status', 'content': 'Analisando resultados da pesquisa...'})}\n\n"
@@ -107,13 +141,16 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
             # Evento de Token de Resposta
             elif isinstance(ev, AgentStream):
                 if ev.delta:
+                    full_assistant_response += ev.delta
                     yield f"data: {json.dumps({'type': 'token', 'content': ev.delta})}\n\n"
                 else:
                     # Envia um feedback de pensamento quando o token for vazio
                     yield f"data: {json.dumps({'type': 'status', 'content': 'Agente está pensando...'})}\n\n"
         
-        # Aguarda a conclusão total do workflow
+        # Aguarda a conclusão total do workflow e salva resposta final no histórico visual
         await handler
+        _chat_histories[session_id]["messages"].append({"role": "assistant", "content": full_assistant_response})
+        
         yield f"data: {json.dumps({'type': 'done', 'content': ''})}\n\n"
         logger.info(f"[CHAT] Workflow concluído para sessão {session_id}.")
 
@@ -121,12 +158,39 @@ async def astream_agent_chat(session_id: str, message: str) -> AsyncGenerator[st
         logger.error(f"Erro no Workflow de Chat: {e}")
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
-async def generate_chat_title_service(message: str) -> str:
-    """Gera um título curto para a sessão de chat baseado na primeira mensagem."""
+async def generate_chat_title_service(message: str, session_id: str, user_id: str) -> str:
+    """Gera um título curto e salva no histórico da sessão."""
+    _update_activity(session_id)
     try:
         prompt = f"Gere um título muito curto (máximo 4 palavras) para uma conversa que começa com esta pergunta: '{message}'. Responda APENAS o título."
         response = await Settings.llm.acomplete(prompt)
-        return str(response).strip('"\'. ')
+        title = str(response).strip('"\'. ')
+        
+        # Salva o título no histórico visual
+        _init_history(session_id, user_id)
+        _chat_histories[session_id]["title"] = title
+        
+        return title
     except Exception as e:
         logger.error(f"Erro ao gerar título: {e}")
         return "Nova Conversa"
+
+def get_user_chats_service(user_id: str) -> Dict[str, dict]:
+    """Filtra e retorna todos os chats associados a um usuário específico."""
+    _cleanup_inactive_sessions()
+    return {
+        sid: {
+            "title": h["title"],
+            "messages": h["messages"],
+            "sources": h["sources"]
+        }
+        for sid, h in _chat_histories.items()
+        if h["user_id"] == user_id
+    }
+
+def delete_chat_service(session_id: str):
+    """Remove permanentemente uma sessão da memória do backend."""
+    logger.info(f"[DELETE] Removendo sessão por solicitação: {session_id}")
+    _session_contexts.pop(session_id, None)
+    _chat_histories.pop(session_id, None)
+    _last_activity.pop(session_id, None)

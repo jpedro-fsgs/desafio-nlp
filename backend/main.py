@@ -8,7 +8,7 @@ from models import (
     ChatRequest, TitleRequest, TitleResponse, SourceModel
 )
 from services.qdrant import get_registros_query_engine
-from agent.service import astream_agent_chat, generate_chat_title_service
+from agent.service import astream_agent_chat, generate_chat_title_service, get_user_chats_service, delete_chat_service
 from starlette.status import HTTP_403_FORBIDDEN
 
 # 1. Configurar LlamaIndex e Ambiente
@@ -44,11 +44,15 @@ async def ask_question(request: QueryRequest):
         sources = []
         for node_with_score in response.source_nodes:
             m = node_with_score.node.metadata
+            link = m.get('pdf_url_acesso') 
+
             sources.append(SourceModel(
                 id=str(m.get('registro_id') or m.get('pdf_nome') or "src"),
                 title=m.get('pdf_nome') or m.get('titulo') or "Documento",
-                link=m.get('pdf_url_acesso'),
-                text=node_with_score.node.get_content(),
+                link=link,
+                # Se houver link, é um PDF: mantemos apenas o link (text=None)
+                # Se não houver link, é um registro: mostramos a ementa (collapsible)
+                text=node_with_score.node.get_content() if not link else None,
                 tool_name="retrieval_direto"
             ))
             
@@ -64,17 +68,28 @@ async def ask_question(request: QueryRequest):
 @app.post("/chat/stream", dependencies=[Depends(get_api_key)])
 async def chat_streaming(request: ChatRequest):
     """Endpoint de chat interativo com Agente, Memória e Streaming de estados."""
-    logger.info(f"Nova mensagem no chat (Session: {request.session_id})")
+    logger.info(f"Nova mensagem no chat (User: {request.user_id}, Session: {request.session_id})")
     return StreamingResponse(
-        astream_agent_chat(request.session_id, request.message),
+        astream_agent_chat(request.session_id, request.message, request.user_id),
         media_type="text/event-stream"
     )
 
 @app.post("/chat/title", response_model=TitleResponse, dependencies=[Depends(get_api_key)])
 async def generate_chat_title(request: TitleRequest):
     """Gera um título curto para a sessão de chat baseado na primeira mensagem."""
-    title = await generate_chat_title_service(request.message)
+    title = await generate_chat_title_service(request.message, request.session_id, request.user_id)
     return TitleResponse(title=title)
+
+@app.get("/users/{user_id}/chats", dependencies=[Depends(get_api_key)])
+async def get_user_chats(user_id: str):
+    """Recupera todas as sessões e históricos associados a um usuário (em memória)."""
+    return get_user_chats_service(user_id)
+
+@app.delete("/chats/{session_id}", dependencies=[Depends(get_api_key)])
+async def delete_chat(session_id: str):
+    """Deleta uma sessão específica da memória."""
+    delete_chat_service(session_id)
+    return {"status": "deleted"}
 
 @app.post("/settings/config", response_model=ConfigResponse, dependencies=[Depends(get_api_key)])
 async def update_settings(request: ConfigSettingsRequest):
