@@ -9,3 +9,4 @@ downloads_extra/
 .idea/
 __pycache__/
 prompts_teste.txt
+parsed_docs*/
