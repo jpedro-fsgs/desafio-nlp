@@ -25,8 +25,7 @@ services:
       - QDRANT_PORT=6333
       - GOOGLE_APPLICATION_CREDENTIALS=/app/key.json
     volumes:
-      # Monta o banco e a chave GCP (Caminhos relativos ao host)
-      - ./backend/data/aneel_legislacao.db:/app/backend/data/aneel_legislacao.db:ro
+      # Monta a chave GCP (Caminho relativo ao host)
       - /home/myoui/Downloads/aneel-rag-674d17f69df0.json:/app/key.json:ro
     env_file:
       - .env

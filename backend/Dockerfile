@@ -4,12 +4,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Copia arquivos do workspace e do backend para resolver dependências
+# Copia manifestos do workspace para resolução de dependências
 COPY pyproject.toml uv.lock ./
 COPY backend/pyproject.toml ./backend/
+COPY frontend/pyproject.toml ./frontend/
 
-# Instala as dependências (ambiente virtual único do workspace)
-RUN uv sync --frozen --no-cache --no-dev
+# Instala dependências do backend (focado no pacote específico)
+RUN uv sync --package desafio-rag-backend --frozen --no-cache --no-dev
 
 # Estágio Final (Runtime)
 FROM python:3.13-slim
@@ -21,9 +22,9 @@ COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
-# Copia o código do backend
+# Copia o código fonte do backend
 COPY backend/ ./backend/
 
-# O CMD deve rodar a partir de dentro da pasta backend para manter caminhos relativos consistentes
+# Ajusta diretório de trabalho para execução
 WORKDIR /app/backend
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

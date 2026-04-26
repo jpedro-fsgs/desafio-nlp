@@ -10,9 +10,7 @@ env/
 htmlcov/
 
 # Ignora toda a pasta data por padrão (isso evita o upload de 1.6GB)
-data/*
-# Abre uma exceção APENAS para o banco de dados
-!data/aneel_legislacao.db
+data/
 
 # Outros diretórios de dados e caches
 qdrant_data/
