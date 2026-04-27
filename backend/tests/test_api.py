@@ -69,6 +69,7 @@ async def test_ask_question_real_call():
 async def test_chat_stream_real_call():
     """Valida o fluxo de chat streaming (SSE) com o Agente e Workflow v0.14."""
     payload = {
+        "user_id": "test_user",
         "session_id": "pytest_session_unique",
         "message": "Resuma a decisão sobre a Light em 2016."
     }

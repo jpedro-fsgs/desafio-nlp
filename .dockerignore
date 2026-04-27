@@ -11,6 +11,7 @@ env/
 # Ignora pastas de dados em qualquer nível
 **/data/
 data/*
+scripts/*
 backend/data/
 qdrant_data/
 

@@ -28,18 +28,6 @@ class PesquisarRegistrosSchema(BaseModel):
             "IMPORTANTE: Sempre valide se uma norma ainda é vigente antes de apresentá-la como regra atual."
         )
     )
-    data_inicio: Optional[str] = Field(
-        None, 
-        description="Data inicial do período de publicação no formato ISO (YYYY-MM-DD). Exemplo: '2021-01-01'."
-    )
-    data_fim: Optional[str] = Field(
-        None, 
-        description="Data final do período de publicação no formato ISO (YYYY-MM-DD). Exemplo: '2023-12-31'."
-    )
-    data_iso: Optional[str] = Field(
-        None, 
-        description="Data exata da publicação da norma (YYYY-MM-DD). Use para buscar normas publicadas em um dia específico."
-    )
 
 class PesquisarDocumentosSchema(BaseModel):
     query: str = Field(
@@ -84,10 +72,7 @@ def get_agent_tools() -> list:
     async def pesquisar_registros(
         query: str, 
         registro_id: Optional[int] = None, 
-        situacao: Optional[str] = None,
-        data_inicio: Optional[str] = None,
-        data_fim: Optional[str] = None,
-        data_iso: Optional[str] = None
+        situacao: Optional[str] = None
     ) -> ToolResponseModel:
         """
         ESTRATEGIA DE BUSCA DE REGISTROS:
@@ -98,16 +83,11 @@ def get_agent_tools() -> list:
         logger.info(f"[TOOL:pesquisar_registros] Query: '{query}' | ID: {registro_id} | Situação: {situacao}")
         try:
             filter_list = []
+            
             if registro_id:
                 filter_list.append(ExactMatchFilter(key="registro_id", value=registro_id))
             if situacao:
                 filter_list.append(ExactMatchFilter(key="situacao", value=situacao))
-            if data_iso:
-                filter_list.append(ExactMatchFilter(key="data_iso", value=data_iso))
-            if data_inicio:
-                filter_list.append(MetadataFilter(key="data_iso", value=data_inicio, operator=FilterOperator.GTE))
-            if data_fim:
-                filter_list.append(MetadataFilter(key="data_iso", value=data_fim, operator=FilterOperator.LTE))
 
             if filter_list:
                 logger.debug(f"[TOOL:pesquisar_registros] Filtros aplicados: {[f.key for f in filter_list]}")
@@ -174,7 +154,7 @@ def get_agent_tools() -> list:
                 filter_list.append(ExactMatchFilter(key="natureza", value=natureza))
             if sigla:
                 filter_list.append(ExactMatchFilter(key="sigla", value=sigla))
-                
+            
             if filter_list:
                 logger.debug(f"[TOOL:pesquisar_documentos] Filtros aplicados: {[f.key for f in filter_list]}")
 
