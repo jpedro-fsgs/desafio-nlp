@@ -70,36 +70,76 @@ async def astream_agent_chat(session_id: str, message: str, user_id: str) -> Asy
         yield f"data: {json.dumps({'type': 'error', 'content': 'Erro ao inicializar ferramentas do agente.'})}\n\n"
         return
 
-    # 2. Inicializa o Agente de Workflow
+    # 2. Inicializar o Agente de Workflow
+
+    # service.py — system_prompt ajustado
+    system_prompt=(
+        "Você é um assistente especializado em regulação do setor elétrico brasileiro, "
+        "com acesso à base normativa oficial da ANEEL.\n\n"
+        "A Base de Dados é composta por normas, documentos e registros de 2016, 2021 e 2022 na maior parte."
+
+        "## FERRAMENTAS DISPONÍVEIS\n"
+        "Você possui três ferramentas de pesquisa. Use-as conforme a necessidade da consulta, "
+        "sem ordem obrigatória — o contexto da pergunta deve guiar sua estratégia:\n"
+        "- 'pesquisar_registros_aneel': para localizar normas por tema e obter metadados (registro_id, título, situação, data).\n"
+        "- 'pesquisar_documentos_pdf_aneel': para buscar dentro do conteúdo de Votos, Notas Técnicas e Anexos.\n"
+        "- 'ler_documento_completo_direto': para leitura integral de um documento já identificado. "
+        "Operação custosa — use quando precisar de precisão absoluta ou análise estrutural completa.\n\n"
+
+        "## NORMAS REVOGADAS — LEITURA OBRIGATÓRIA\n"
+        "Normas revogadas são quase integralmente marcadas com ~~strikethrough~~.\n"
+        "Normas com situação REVOGADA, SUSPENSA ou TORNADA SEM EFEITO não devem ser descartadas automaticamente. "
+        "Seus metadados frequentemente indicam qual norma as revogou, o que pode ser a informação mais relevante "
+        "para a consulta. Ao encontrar uma norma revogada:\n"
+        "  1. Informe claramente que ela não está mais em vigor.\n"
+        "  2. Identifique e busque a norma revogadora nos metadados.\n"
+        "  3. Responda com base na norma vigente, contextualizando a evolução normativa quando relevante.\n\n"
+
+        "## TRECHOS REVOGADOS DENTRO DE DOCUMENTOS\n"
+        "Ao ler documentos com 'ler_documento_completo_direto', trechos marcados com ~~strikethrough~~ "
+        "indicam texto que foi revogado ou torndo sem efeito dentro daquele documento. "
+        "Preste atenção rigorosa a essas marcações:\n"
+        "  - Nunca cite um trecho ~~riscado~~ como regra vigente.\n"
+        "  - Sinalize explicitamente ao usuário que aquele trecho foi revogado.\n"
+        "  - Quando possível, identifique o ato que provocou a revogação parcial e busque o texto substituto.\n\n"
+
+        "## REGRAS DE RESPOSTA\n"
+        "- Cite sempre: tipo da norma, número e ano (ex: REN nº 1.000/2023).\n"
+        "- Se nenhum resultado relevante for encontrado, informe claramente em vez de especular.\n"
+        "- Responda somente dentro do escopo da regulação do setor elétrico brasileiro e da base normativa da ANEEL.\n"
+        "- Baseie a resposta exclusivamente no contexto recuperado pelas ferramentas.\n"
+        "- Não estenda a resposta além do necessário.\n"
+        "- Estruture respostas complexas com seções (ex: Fundamento Legal, Detalhamento Técnico, Conclusão).\n"
+        "- Nunca afirme algo como vigente sem verificar o campo 'situação' e os trechos do documento.\n"
+    )
     agent = FunctionAgent(
         tools=tools,
         llm=Settings.llm,
-        system_prompt=(
-            "Você é o assistente virtual da ANEEL (OpenAI Powered). "
-            "Sua tarefa é responder consultas jurídicas e técnicas com base nas normas oficiais.\n\n"
-            "DIRETRIZES:\n"
-            "1. Pesquise primeiro em 'pesquisar_registros_aneel' para contexto geral.\n"
-            "2. Use 'pesquisar_documentos_pdf_aneel' para detalhes técnicos e votos.\n"
-            "3. Cite sempre a norma e o ano. Se o texto estiver rasurado, indique que foi revogado, e busque a norma atualizada.\n  "
-        )
+        system_prompt=system_prompt
     )
 
     # 3. Recupera o contexto da sessão (contém o histórico)
     ctx = _get_context(session_id, agent)
 
-    # 4. Executa o Workflow com streaming de eventos e limite de segurança aumentado
-    handler = agent.run(ctx=ctx, user_msg=message, max_steps=40)
+    # 4. Executa o Workflow com streaming de eventos e limite de segurança adequado
+    handler = agent.run(ctx=ctx, user_msg=message, max_steps=20)
 
     full_assistant_response = ""
 
     try:
         # Feedback inicial imediato
-        yield f"data: {json.dumps({'type': 'status', 'content': 'Agente iniciando raciocínio...'})}\n\n"
+        yield f"data: {json.dumps({'type': 'status', 'content': 'Pensando'})}\n\n"
 
         async for ev in handler.stream_events():
             # Evento de Chamada de Ferramenta
             if isinstance(ev, ToolCall):
-                msg = f"Agente decidiu pesquisar: {ev.tool_name}"
+                # Mapeamento de nomes técnicos para mensagens amigáveis
+                tool_map = {
+                    "pesquisar_registros_aneel": "Pesquisando registros",
+                    "pesquisar_documentos_pdf_aneel": "Pesquisando Documentos",
+                    "ler_documento_completo_direto": "Recuperando Documentos"
+                }
+                msg = tool_map.get(ev.tool_name, f"Analisando: {ev.tool_name}")
                 yield f"data: {json.dumps({'type': 'status', 'content': msg})}\n\n"
             
             # Evento de Resultado da Ferramenta (Extração de fontes em tempo real)
