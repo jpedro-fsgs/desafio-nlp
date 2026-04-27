@@ -23,50 +23,84 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_URL = os.getenv("QDRANT_URL")
 
-# Configurações do GCS (GCP Bucket)
-GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
+# Configurações de Cloud e LLM
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 
-logger.info("GCP credentials path: " + str(GOOGLE_APPLICATION_CREDENTIALS))
+# OpenAI Model Config
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+# Segurança da API Interna
+API_KEY = os.getenv("API_KEY")
 
 # --- VALIDAÇÃO DE CONFIGURAÇÃO ---
 
-# 1. Validação Qdrant Cloud (Inconsistência de chaves)
-if QDRANT_URL or QDRANT_API_KEY:
-    if not (QDRANT_URL and QDRANT_API_KEY):
-        missing = "QDRANT_API_KEY" if not QDRANT_API_KEY else "QDRANT_URL"
-        error_msg = f"Configuração incompleta para Qdrant Cloud: {missing} está faltando no seu arquivo .env"
-        logger.error(error_msg)
-        raise ValueError(error_msg)
 
-# 2. Validação OpenAI
-if not os.getenv("OPENAI_API_KEY"):
-    error_msg = "OPENAI_API_KEY não encontrada. O sistema requer esta chave para funcionar."
-    logger.error(error_msg)
-    raise ValueError(error_msg)
+def validate_config():
+    """Valida as configurações críticas e loga erros detalhados."""
+    errors = []
 
-# Modo de recuperação PADRÃO alterado para GCS (Bucket Privado)
-RETRIEVAL_MODE = RetrievalMode.GCS 
+    # 1. Validação Qdrant
+    if QDRANT_URL or QDRANT_API_KEY:
+        if not QDRANT_URL:
+            errors.append("QDRANT_URL ausente mesmo com QDRANT_API_KEY definida.")
+        if not QDRANT_API_KEY:
+            errors.append("QDRANT_API_KEY ausente mesmo com QDRANT_URL definida.")
 
-# 3. Validação GCS se estiver no modo GCS
-if RETRIEVAL_MODE == RetrievalMode.GCS:
+    # 2. Validação OpenAI (LLM e Embeddings)
+    if not os.getenv("OPENAI_API_KEY"):
+        errors.append(
+            "OPENAI_API_KEY não encontrada. Necessária para o LLM e busca vetorial (embeddings)."
+        )
+
+    # 3. Validação Google Credentials (GCS)
+    if not GOOGLE_APPLICATION_CREDENTIALS:
+        logger.warning(
+            "GOOGLE_APPLICATION_CREDENTIALS não definido. Acesso ao GCS falhará se necessário."
+        )
+
     if not GCS_BUCKET_NAME:
-        error_msg = "Modo GCS ativo, mas GCS_BUCKET_NAME não configurados no .env"
-        logger.error(error_msg)
-        raise ValueError(error_msg)
+        logger.warning(
+            "GCS_BUCKET_NAME não definido. Operações de armazenamento e recuperação de documentos falharão."
+        )
 
-    if  not GOOGLE_APPLICATION_CREDENTIALS:
-        logger.info("GOOGLE_APPLICATION_CREDENTIALS não definido explicitamente.")
+    # 4. Validação do Modelo OpenAI
+    if not OPENAI_MODEL:
+        errors.append("OPENAI_MODEL não definido. Especifique o modelo a ser usado para o LLM.")
 
-# Configurações de Retrieval (Limites Fixos)
-SIMILARITY_TOP_K = 5
-MAX_RETRIEVAL = 10  # Valor fixo, não alterável via API
+    # 5. Validação da Chave da API
+    if not API_KEY:
+        logger.warning(
+            "API_KEY não definida."
+        )
 
-# Segurança
-API_KEY = os.getenv("API_KEY")
+
+    if errors:
+        for err in errors:
+            logger.error(f"[CONFIG ERROR] {err}")
+
+
+validate_config()
+
+# Modo de recuperação PADRÃO
+RETRIEVAL_MODE = RetrievalMode.GCS
+
+# Configurações de Retrieval
+SIMILARITY_TOP_K = 3
+MAX_RETRIEVAL = 10
+
 
 def setup_llama_index():
-    """Configura os modelos globais do LlamaIndex."""
-    Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-    Settings.llm = OpenAI(model="gpt-4o-mini")
-    logger.info("Configurações do LlamaIndex inicializadas (Embed: small, LLM: gpt-4o-mini)")
+    """Configura os modelos globais utilizando OpenAI para LLM e Embeddings."""
+    try:
+        # OpenAI para Embeddings (Consistência com a base indexada no Qdrant)
+        Settings.embed_model = OpenAIEmbedding(model="text-embedding-3-small")
+
+        Settings.llm = OpenAI(model=OPENAI_MODEL)
+
+        logger.info(
+            f"LlamaIndex inicializado: LLM={OPENAI_MODEL}, Embed=OpenAI-small"
+        )
+    except Exception as e:
+        logger.error(f"[FATAL] Falha ao configurar LlamaIndex: {str(e)}")
+        raise

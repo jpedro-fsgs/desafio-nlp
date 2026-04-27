@@ -17,12 +17,12 @@ class SourceModel(BaseModel):
     text: Optional[str] = Field(default=None, description="Trecho, ementa ou resumo do conteúdo")
 
 class ToolResponseModel(BaseModel):
-    text: str = Field(description="O conteúdo em texto retornado pela busca")
+    text: Optional[str] = Field(default=None, description="O conteúdo em texto retornado pela busca")
     sources: List[SourceModel] = Field(default_factory=list, description="Lista padronizada de fontes")
 
     def __str__(self):
         """Garante que o LLM receba o texto otimizado ao invés do dump JSON do modelo."""
-        return self.text
+        return self.text or "Nenhum conteúdo textual retornado."
 
 # --- Requisições e Respostas ---
 
