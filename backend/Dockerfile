@@ -1,15 +1,19 @@
 # Estágio de Build
 FROM python:3.13-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
 WORKDIR /app
 
-# Copia manifestos do workspace para resolução de dependências
 COPY pyproject.toml uv.lock ./
 COPY backend/pyproject.toml ./backend/
 COPY frontend/pyproject.toml ./frontend/
 
-# Instala dependências do backend (focado no pacote específico)
+# 1. Só dependências (camada cacheável)
+RUN uv sync --package desafio-rag-backend --frozen --no-cache --no-dev --no-install-project
+
+# 2. Copia o fonte
+COPY backend/ ./backend/
+
+# 3. Instala o projeto em si
 RUN uv sync --package desafio-rag-backend --frozen --no-cache --no-dev
 
 # Estágio Final (Runtime)

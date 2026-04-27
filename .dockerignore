@@ -6,32 +6,24 @@ __pycache__/
 venv/
 env/
 .pytest_cache/
-.coverage
-htmlcov/
+.python-version
 
-# Ignora toda a pasta data por padrão (isso evita o upload de 1.6GB)
-data/
-
-# Outros diretórios de dados e caches
+# Ignora pastas de dados em qualquer nível
+**/data/
+data/*
+backend/data/
 qdrant_data/
+
+# Banco de dados local
 *.sqlite3
 
-# Configurações e Segredos
+# Segredos e Configurações (Essencial para segurança)
 .env
-# Ignora chaves JSON (Service Accounts)
-*.json
-!pyproject.toml
-!uv.lock
 
-# Logs
+# Logs e Caches
 *.log
-rag_usage.log
-
-# Git
-.git
+.git/
 .gitignore
-
-# IDEs
+.dockerignore
 .vscode/
-.idea/
 .DS_Store

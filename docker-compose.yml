@@ -1,44 +1,17 @@
-version: '3.8'
-
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant-vector-db
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - ./qdrant_data:/qdrant/storage
-
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: jpedrofsgs/aneel-rag-backend:latest
     container_name: aneel-rag-backend
     ports:
       - "8000:8000"
-    depends_on:
-      - qdrant
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/key.json
-    volumes:
-      # Monta a chave GCP (Caminho relativo ao host)
-      - /home/myoui/Downloads/aneel-rag-674d17f69df0.json:/app/key.json:ro
     env_file:
       - .env
 
   frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
+    image: jpedrofsgs/aneel-rag-frontend:latest
     container_name: aneel-rag-frontend
     ports:
       - "8501:8501"
-    depends_on:
-      - backend
     environment:
       - BACKEND_URL=http://backend:8000
     env_file:
