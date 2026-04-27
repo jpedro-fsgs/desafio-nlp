@@ -176,17 +176,18 @@ async def generate_chat_title_service(message: str, session_id: str, user_id: st
         return "Nova Conversa"
 
 def get_user_chats_service(user_id: str) -> Dict[str, dict]:
-    """Filtra e retorna todos os chats associados a um usuário específico."""
+    """Filtra e retorna todos os chats associados a um usuário específico, renovando a atividade."""
     _cleanup_inactive_sessions()
-    return {
-        sid: {
-            "title": h["title"],
-            "messages": h["messages"],
-            "sources": h["sources"]
-        }
-        for sid, h in _chat_histories.items()
-        if h["user_id"] == user_id
-    }
+    user_chats = {}
+    for sid, h in _chat_histories.items():
+        if h["user_id"] == user_id:
+            _update_activity(sid) # Renova o tempo de vida ao visualizar/carregar
+            user_chats[sid] = {
+                "title": h["title"],
+                "messages": h["messages"],
+                "sources": h["sources"]
+            }
+    return user_chats
 
 def delete_chat_service(session_id: str):
     """Remove permanentemente uma sessão da memória do backend."""

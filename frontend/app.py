@@ -165,8 +165,8 @@ async def handle_chat_stream(user_input: str, chat_id: str, chat_column, sources
     chat = st.session_state.chats[chat_id]
     chat["messages"].append({"role": "user", "content": user_input})
     
-    # Limpa fontes para a nova consulta
-    chat["sources"] = [] 
+    # IMPORTANTE: Não limpamos mais chat["sources"] aqui para manter o histórico 
+    # de documentos acumulado durante toda a conversa.
     
     if len(chat["messages"]) == 1:
         asyncio.create_task(generate_title(chat_id, user_input))
