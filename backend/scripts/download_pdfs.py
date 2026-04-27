@@ -131,6 +131,8 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, help="Limite de arquivos para baixar")
     parser.add_argument("--where", type=str, default="status_download != 'sucesso'", 
                         help="Condição SQL personalizada para a cláusula WHERE")
+    parser.add_argument("--db", type=str, default="aneel_legislacao.db", help="Caminho do banco de dados SQLite")
     
     args = parser.parse_args()
+    DB_NAME = args.db # Sobrescreve a global
     download_pdfs(limit=args.limit, where=args.where)

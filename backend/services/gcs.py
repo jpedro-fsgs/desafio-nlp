@@ -9,6 +9,18 @@ from config import GCS_BUCKET_NAME, logger, COLLECTION_PDFS
 
 DEBUG_FILE = "debug_retrieval.txt"
 
+def upload_to_gcs(local_path: str, gcs_path: str):
+    """Realiza o upload de um arquivo local para o GCS."""
+    try:
+        client = storage.Client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        blob = bucket.blob(gcs_path)
+        blob.upload_from_filename(local_path)
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao fazer upload para GCS ({local_path} -> {gcs_path}): {e}")
+        return False
+
 def log_debug(source: str, query: str, nodes: List[NodeWithScore]):
     """Escreve a saída completa do retrieval em um arquivo de debug."""
     return

@@ -39,6 +39,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from tqdm import tqdm
 from scripts.parsers.pymupdf_parser import PyMuPDFParser
+from services.gcs import upload_to_gcs
 
 # ─────────────────────────────────────────────
 #  Logging
@@ -53,10 +54,14 @@ log = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 #  Configurações
 # ─────────────────────────────────────────────
-BASE_DIR  = Path(__file__).parent
-DB_PATH   = BASE_DIR / "data" / "aneel_legislacao2.db"
-PDFS_DIR  = BASE_DIR / "data" / "downloads"
-OUTPUT_DIR             = BASE_DIR / "data" / "parsed_docs"
+# Assume que o script roda da raiz do projeto ou define caminhos absolutos baseados no arquivo
+SCRIPTS_DIR = Path(__file__).parent.resolve()
+BACKEND_DIR = SCRIPTS_DIR.parent
+DATA_DIR    = BACKEND_DIR / "data"
+
+DB_PATH      = DATA_DIR / "aneel_legislacao2.db"
+PDFS_DIR     = DATA_DIR / "downloads"
+OUTPUT_DIR   = DATA_DIR / "parsed_docs"
 OUTPUT_PDFS_DIR        = OUTPUT_DIR / "pdfs"
 OUTPUT_REGISTROS_DIR   = OUTPUT_DIR / "registros"
 
@@ -168,6 +173,14 @@ def worker_processar_pdf(args: Tuple) -> Dict[str, Any]:
         meta = {"pdf_nome": arquivo, "registro_id": r_id, "sigla": sigla, "natureza": natureza, "url_origem": url_origem, "data_iso": data_iso, "links_referenciados": parsed["links_referenciados"]}
         escrever_arquivo_atomico(path_json, json.dumps(meta, ensure_ascii=False, indent=2))
 
+        # --- Upload para GCS ---
+        # 1. PDF Original (raiz da pasta pdfs/)
+        upload_to_gcs(str(pdf_path), f"pdfs/{arquivo}")
+        # 2. Markdown (conforme esperado pelo retriever)
+        upload_to_gcs(str(path_md), f"parsed_docs/pdfs/{arquivo}.md")
+        # 3. JSON de Metadados
+        upload_to_gcs(str(path_json), f"parsed_docs/pdfs/{arquivo}.json")
+
         return {"id": p_id, "status": "success", "arquivo": arquivo, "path_md": str(path_md), "metadata": meta}
     except Exception as exc:
         return {"id": p_id, "status": "error", "arquivo": arquivo, "error": str(exc)}
@@ -229,7 +242,12 @@ def processar_ingestao(test_mode: bool = False, limit: int = 0, workers: int = 4
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT p.id, p.registro_id, p.arquivo, p.natureza, p.sigla, p.url, r.publicacao FROM pdfs p JOIN registros r ON p.registro_id = r.id " + ("WHERE p.status_ingestao = 'pendente'" if not test_mode else ""))
+    cursor.execute("""
+        SELECT p.id, p.registro_id, p.arquivo, p.natureza, p.sigla, p.url, COALESCE(r.publicacao, '') 
+        FROM pdfs p 
+        LEFT JOIN registros r ON p.registro_id = r.id 
+        WHERE p.status_ingestao = 'pendente'
+    """)
     all_rows = cursor.fetchall()
 
     max_bytes = max_size_mb * 1024 * 1024
