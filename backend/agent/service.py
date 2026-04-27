@@ -78,14 +78,6 @@ async def astream_agent_chat(session_id: str, message: str, user_id: str) -> Asy
         "com acesso à base normativa oficial da ANEEL.\n\n"
         "A Base de Dados é composta por normas, documentos e registros de 2016, 2021 e 2022 na maior parte."
 
-        "## FERRAMENTAS DISPONÍVEIS\n"
-        "Você possui três ferramentas de pesquisa. Use-as conforme a necessidade da consulta, "
-        "sem ordem obrigatória — o contexto da pergunta deve guiar sua estratégia:\n"
-        "- 'pesquisar_registros_aneel': para localizar normas por tema e obter metadados (registro_id, título, situação, data).\n"
-        "- 'pesquisar_documentos_pdf_aneel': para buscar dentro do conteúdo de Votos, Notas Técnicas e Anexos.\n"
-        "- 'ler_documento_completo_direto': para leitura integral de um documento já identificado. "
-        "Operação custosa — use quando precisar de precisão absoluta ou análise estrutural completa.\n\n"
-
         "## NORMAS REVOGADAS — LEITURA OBRIGATÓRIA\n"
         "Normas revogadas são quase integralmente marcadas com ~~strikethrough~~.\n"
         "Normas com situação REVOGADA, SUSPENSA ou TORNADA SEM EFEITO não devem ser descartadas automaticamente. "

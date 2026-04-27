@@ -86,7 +86,7 @@ validate_config()
 RETRIEVAL_MODE = RetrievalMode.GCS
 
 # Configurações de Retrieval
-SIMILARITY_TOP_K = 3
+SIMILARITY_TOP_K = 5
 MAX_RETRIEVAL = 10
 
 
