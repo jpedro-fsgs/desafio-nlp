@@ -1,8 +1,8 @@
 # ANEEL RAG — Inteligência Jurídica para o Setor Elétrico
 
-> 🚀 **Disponibilidade:** Este projeto está hospedado e em execução no **Google Cloud Run**, com armazenamento em **Google Cloud Storage (GCS)**, e encontra-se disponível para acesso online.
+> 🚀 **Acesse a aplicação:** O projeto está hospedado no **Google Cloud Run** (frontend e backend) e está disponível para acesso em: [https://aneel-rag-frontend-1002143816522.us-east4.run.app](https://aneel-rag-frontend-1002143816522.us-east4.run.app)
 
-Este projeto é uma solução avançada de **Retrieval-Augmented Generation (RAG)** projetada para consulta, análise e fundamentação da legislação da Agência Nacional de Energia Elétrica (ANEEL). O sistema utiliza uma arquitetura moderna de agentes baseada em fluxos de trabalho (Workflows) para garantir respostas precisas, auditáveis e tecnicamente embasadas.
+É uma solução avançada de **Retrieval-Augmented Generation (RAG)** projetada para consulta, análise e fundamentação da legislação da Agência Nacional de Energia Elétrica (ANEEL). O sistema utiliza uma arquitetura moderna de agentes baseada em fluxos de trabalho (Workflows) para garantir respostas precisas, auditáveis e tecnicamente embasadas.
 
 ## 🏗️ Arquitetura do Sistema e Decisões Técnicas
 
@@ -15,10 +15,10 @@ O coração da aplicação utiliza o novo paradigma de **Workflows do LlamaIndex
 - **Gestão de Sessão e Memória:** Implementamos um sistema de persistência em memória que mantém o contexto de workflows por `session_id`. Inclui uma lógica de **garbage collection** que limpa sessões inativas após 1 hora para otimizar recursos.
 
 ### 2. Camada de Dados: Estratégia "Parent Retrieval" (Qdrant + GCS)
-Uma das decisões mais críticas foi a separação entre a busca vetorial e a entrega de contexto:
+Uma das decisões mais críticas foi integrar o **Google Cloud Storage** como a espinha dorsal da recuperação de contexto:
 - **Busca Semântica (Qdrant Cloud):** Armazena embeddings de fragmentos (chunks) para localização rápida de trechos relevantes.
-- **Contexto Integral (GCS):** Ao identificar um trecho relevante, o sistema não entrega apenas o chunk ao LLM. Ele recupera o **Markdown completo** do documento original no Google Cloud Storage. 
-- **Justificativa:** No setor elétrico, um artigo isolado pode ser enganoso sem os parágrafos subsequentes ou o preâmbulo. O "Parent Retrieval" via Markdown garante que o LLM tenha a visão total para uma resposta precisa.
+- **GCS como Fonte de Verdade:** Ao identificar um trecho relevante no Qdrant, o sistema utiliza o bucket do GCS para recuperar o **Markdown completo** do documento original. Isso garante que o LLM nunca trabalhe com informações parciais ou "alucinadas" por falta de contexto.
+- **Justificativa:** No setor elétrico, um artigo isolado pode ser enganoso sem os parágrafos subsequentes ou o preâmbulo. O "Parent Retrieval" via GCS garante a visão total necessária para uma resposta tecnicamente correta.
 
 ### 3. Frontend (Streamlit)
 - **Streaming de Estados:** O frontend comunica-se via Event-Stream para mostrar ao usuário o que o agente está fazendo em tempo real ("Pesquisando registros...", "Lendo documento técnico...").
