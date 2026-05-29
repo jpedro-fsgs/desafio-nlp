@@ -1,7 +1,5 @@
 # ANEEL RAG — Inteligência Jurídica para o Setor Elétrico
 
-> 🚀 **Acesse a aplicação:** O projeto está hospedado no **Google Cloud Run** (frontend e backend) e está disponível para acesso em: [https://aneel-rag-frontend-1002143816522.us-east4.run.app](https://aneel-rag-frontend-1002143816522.us-east4.run.app)
-
 É uma solução avançada de **Retrieval-Augmented Generation (RAG)** projetada para consulta, análise e fundamentação da legislação da Agência Nacional de Energia Elétrica (ANEEL). O sistema utiliza uma arquitetura moderna de agentes baseada em fluxos de trabalho (Workflows) para garantir respostas precisas, auditáveis e tecnicamente embasadas.
 
 ## 🏗️ Arquitetura do Sistema e Decisões Técnicas
@@ -22,7 +20,7 @@ Uma das decisões mais críticas foi integrar o **Google Cloud Storage** como a 
 
 ### 3. Frontend (Streamlit)
 - **Streaming de Estados:** O frontend comunica-se via Event-Stream para mostrar ao usuário o que o agente está fazendo em tempo real ("Pesquisando registros...", "Lendo documento técnico...").
-- **Fontes Dinâmicas:** Painel lateral que exibe os metadados das normas citadas e oferece links diretos para os PDFs originais via **URLs assinadas do GCS**, garantindo segurança e acesso imediato.
+- **Fontes Dinâmicas:** Painel lateral que exibe os metadados das normas citadas e oferece links diretos para os PDFs originais via **URLs públicas do GCS**, garantindo acesso imediato.
 
 ## 🛠️ Pipeline de Ingestão e Inteligência
 
